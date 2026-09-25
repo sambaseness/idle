@@ -1,151 +1,43 @@
-import React, { useMemo, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import './styles.css';
+import React,{useEffect,useMemo,useState}from'react';
+import{createRoot}from'react-dom/client';
+import{AppData,Difficulty,Post,FeedItem,Book,ExternalResource,Topic,domains,seedData}from'./data';
+import'./styles.css';
 
-type NodeKind = 'domain' | 'topic' | 'technology';
-interface KnowledgeNode {
-  id: string; title: string; kind: NodeKind; x: number; y: number; color: string; icon: string;
-  description: string; parent?: string; tags: string[];
-}
+const KEY='personal-cs-data-v2',ADMIN='personal-cs-admin-v1';
+const Icon=({name}:{name:string})=><span className="material-symbols-rounded icon">{name}</span>;
+const uid=(p:string)=>p+'-'+Math.random().toString(36).slice(2,9);
+const go=(p:string)=>{history.pushState({},'',p);dispatchEvent(new PopStateEvent('popstate'))};
+function usePath(){const[p,s]=useState(location.pathname);useEffect(()=>{const f=()=>s(location.pathname);addEventListener('popstate',f);return()=>removeEventListener('popstate',f)},[]);return p}
+function useData(){const[d,s]=useState<AppData>(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'null')||seedData}catch{return seedData}});useEffect(()=>localStorage.setItem(KEY,JSON.stringify(d)),[d]);return[d,s]as const}
+const date=(x:string)=>new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'short',year:'numeric'}).format(new Date(x));
+function MD({text}:{text:string}){return <div className="markdown">{text.split(/\n\n+/).map((b,i)=>b.startsWith('# ')?<h1 key={i}>{b.slice(2)}</h1>:b.startsWith('## ')?<h2 key={i}>{b.slice(3)}</h2>:/^\d+\. /.test(b)?<ol key={i}>{b.split('\n').map((x,j)=><li key={j}>{x.replace(/^\d+\. /,'')}</li>)}</ol>:<p key={i}>{b}</p>)}</div>}
+function Shell({children,data}:{children:React.ReactNode;data:AppData}){const path=usePath(),[q,setQ]=useState('');const results=useMemo(()=>{const x=q.toLowerCase();if(!x)return[];return[...data.posts.map(a=>['Post',a.title,'/posts/'+a.slug]),...data.books.map(a=>['Livre',a.title,'/library/'+a.id]),...data.topics.map(a=>['Topic',a.title,'/explore/topic/'+a.id])].filter(a=>String(a[1]).toLowerCase().includes(x)).slice(0,7)},[q,data]);return <div className="shell"><header className="topbar"><button className="brand"onClick={()=>go('/')}><span className="brandMark"><Icon name="school"/></span>Personal <b>CS</b></button><div className="globalSearch"><Icon name="search"/><input value={q}onChange={e=>setQ(e.target.value)}placeholder="Rechercher..." />{results.length>0&&<div className="searchResults">{results.map(r=><button key={String(r[2])}onClick={()=>{go(String(r[2]));setQ('')}}><small>{r[0]}</small><b>{r[1]}</b></button>)}</div>}</div><nav>{[['Home','/'],['Feed','/feed'],['Posts','/posts'],['Library','/library'],['Explore','/explore']].map(([l,p])=><button key={p}className={path===p||path.startsWith(p+'/')?'active':''}onClick={()=>go(p)}>{l}</button>)}</nav><button className="iconBtn"onClick={()=>document.documentElement.classList.toggle('light')}><Icon name="light_mode"/></button><button className="avatar"onClick={()=>go('/admin')}>S</button></header>{children}<footer className="mobileNav">{[['home','/','Home'],['dynamic_feed','/feed','Feed'],['article','/posts','Posts'],['menu_book','/library','Library'],['hub','/explore','Explore']].map(([i,p,l])=><button key={p}className={path===p||path.startsWith(p+'/')?'active':''}onClick={()=>go(p)}><Icon name={i}/><span>{l}</span></button>)}</footer></div>}
 
-const nodes: KnowledgeNode[] = [
-  { id:'cs', title:'Informatique', kind:'domain', x:50, y:50, color:'#39a7ff', icon:'computer', description:'Le domaine central qui relie développement, réseaux, données, cybersécurité et systèmes.', tags:['domaine','fondamentaux'] },
-  { id:'ai', title:'Intelligence Artificielle', kind:'domain', x:21, y:25, color:'#bd5cff', icon:'neurology', description:'Modèles, apprentissage automatique, perception et systèmes intelligents.', tags:['IA','data'] },
-  { id:'net', title:'Réseaux', kind:'domain', x:52, y:20, color:'#28d6b1', icon:'hub', description:'Communication numérique, protocoles, adressage et infrastructures.', tags:['réseaux','TCP/IP'] },
-  { id:'sec', title:'Cybersécurité', kind:'domain', x:80, y:27, color:'#ffc42f', icon:'shield', description:'Protection des systèmes, réseaux, identités et données.', tags:['sécurité'] },
-  { id:'telecom', title:'Télécommunications', kind:'domain', x:14, y:53, color:'#22d7c0', icon:'cell_tower', description:"Transmission de l'information par systèmes filaires et radio.", tags:['télécom','radio'] },
-  { id:'math', title:'Mathématiques', kind:'domain', x:24, y:78, color:'#ff4f9a', icon:'functions', description:'Outils mathématiques nécessaires aux sciences informatiques et aux transmissions.', tags:['maths'] },
-  { id:'dev', title:'Développement logiciel', kind:'topic', x:46, y:31, color:'#37c9ff', icon:'code', description:'Conception, implémentation et maintenance de logiciels.', tags:['software'] },
-  { id:'front', title:'Frontend', kind:'topic', x:65, y:48, color:'#3a9dff', icon:'desktop_windows', description:"Interfaces utilisateur, expérience visuelle et applications web.", tags:['web','UI'] },
-  { id:'back', title:'Backend', kind:'topic', x:55, y:69, color:'#b258ff', icon:'dns', description:'Services, APIs, logique métier et systèmes côté serveur.', tags:['server','API'] },
-  { id:'db', title:'Bases de données', kind:'topic', x:47, y:82, color:'#ffbf29', icon:'database', description:'Stockage, modélisation, requêtage et systèmes de données.', tags:['SQL','NoSQL'] },
-  { id:'data', title:'Sciences des Données', kind:'domain', x:73, y:81, color:'#21c9f5', icon:'monitoring', description:'Analyse, visualisation et exploitation de données.', tags:['data','Python'] },
-  { id:'devops', title:'DevOps', kind:'topic', x:37, y:65, color:'#24d6b0', icon:'all_inclusive', description:'Automatisation, déploiement, infrastructure et fiabilité.', tags:['CI/CD','cloud'] },
-  { id:'react', title:'React', kind:'technology', x:63, y:38, color:'#36d9ff', icon:'code', description:'Bibliothèque JavaScript pour construire des interfaces.', parent:'front', tags:['frontend','javascript'] },
-  { id:'ts', title:'TypeScript', kind:'technology', x:72, y:42, color:'#4aa8ff', icon:'TS', description:'JavaScript avec typage statique.', parent:'front', tags:['frontend','language'] },
-  { id:'js', title:'JavaScript', kind:'technology', x:76, y:53, color:'#f5d51b', icon:'JS', description:'Langage de programmation du web.', parent:'front', tags:['language'] },
-  { id:'html', title:'HTML', kind:'technology', x:67, y:60, color:'#f47c37', icon:'HTML', description:'Langage de structuration des documents web.', parent:'front', tags:['web'] },
-  { id:'css', title:'CSS', kind:'technology', x:61, y:57, color:'#7651d7', icon:'CSS', description:'Langage de style des interfaces web.', parent:'front', tags:['web'] },
-  { id:'vite', title:'Vite', kind:'technology', x:52, y:11, color:'#8d6bff', icon:'bolt', description:"Outil moderne de développement frontend.", parent:'dev', tags:['tooling'] },
-  { id:'tcp', title:'TCP/IP', kind:'topic', x:51, y:7, color:'#27d5b4', icon:'lan', description:'Suite de protocoles fondamentale pour Internet.', parent:'net', tags:['protocol','network'] },
-  { id:'pentest', title:'Pentesting', kind:'topic', x:87, y:15, color:'#ffc42f', icon:'security', description:'Tests contrôlés pour identifier les vulnérabilités.', parent:'sec', tags:['security'] },
-  { id:'python', title:'Python', kind:'technology', x:84, y:75, color:'#3b9ef4', icon:'terminal', description:'Langage très utilisé en data, IA et automatisation.', parent:'data', tags:['language','data'] },
-];
+const Section=({title,action,onClick,children}:{title:string;action?:string;onClick?:()=>void;children:React.ReactNode})=><section><div className="sectionTitle"><h2>{title}</h2>{action&&<button onClick={onClick}>{action}<Icon name="arrow_forward"/></button>}</div>{children}</section>;
+const TopicCard=({t}:{t:Topic})=><button className="topicCard"onClick={()=>go('/explore/topic/'+t.id)}><span className="topicIcon"><Icon name={t.domain==='Réseaux'?'lan':t.domain==='Cybersécurité'?'shield':t.domain==='Développement'?'code':'hub'}/></span><span><b>{t.title}</b><small>{t.domain} · {t.estimatedTime} min</small><p>{t.description}</p></span><Icon name="arrow_forward"/></button>;
+const PostCard=({p}:{p:Post})=><button className="postCard"onClick={()=>go('/posts/'+p.slug)}><small>{p.domain} · {p.readingTime} min</small><h3>{p.title}</h3><p>{p.excerpt}</p><div className="tags">{p.tags.map(t=><span key={t}>#{t}</span>)}</div></button>;
+const FeedCard=({f}:{f:FeedItem})=><button className="feedCard"onClick={()=>f.url?window.open(f.url,'_blank','noopener,noreferrer'):go('/feed')}><span className="feedIcon"><Icon name="bookmark"/></span><span><small>{f.category} · {date(f.createdAt)}</small><b>{f.title}</b><p>{f.excerpt}</p></span><Icon name="arrow_forward"/></button>;
+function Home({data}:{data:AppData}){return <main className="page"><section className="hero"><div><span className="eyebrow">PERSONAL COMPUTER SCIENCE</span><h1>Where do you want to <em>go deeper?</em></h1><p>A personal, curated knowledge ecosystem where posts, books, resources, tools and learning paths stay connected.</p><div className="actions"><button className="primary"onClick={()=>go('/explore')}><Icon name="explore"/>Explore knowledge</button><button className="secondary"onClick={()=>go('/posts')}><Icon name="auto_stories"/>Read posts</button></div></div><div className="orb"><Icon name="hub"/><b>Everything<br/>is connected.</b></div></section><Section title="Continue exploring"action="Explore all"onClick={()=>go('/explore')}><div className="topicGrid">{data.topics.slice(0,6).map(t=><TopicCard t={t}key={t.id}/>)}</div></Section><Section title="Latest Posts"action="All posts"onClick={()=>go('/posts')}><div className="grid3">{data.posts.filter(x=>x.published).slice(0,3).map(p=><PostCard p={p}key={p.id}/>)}</div></Section><Section title="From the Feed"action="Open feed"onClick={()=>go('/feed')}><div className="feedList">{data.feed.filter(x=>x.published).map(f=><FeedCard f={f}key={f.id}/>)}</div></Section><Section title="Library"action="Browse books"onClick={()=>go('/library')}><div className="shelf">{data.books.map(b=><button className="book"key={b.id}onClick={()=>go('/library/'+b.id)}><img src={b.cover}alt=""/><b>{b.title}</b><small>{b.author}</small></button>)}</div></Section></main>}
+function Hero({kicker,title,text}:{kicker:string;title:string;text:string}){return <header className="pageHero"><span className="eyebrow">{kicker}</span><h1>{title}</h1><p>{text}</p></header>}
+function Feed({data}:{data:AppData}){const[c,setC]=useState('Tout'),cats=['Tout',...new Set(data.feed.map(x=>x.category))];return <main className="page"><Hero kicker="WHAT'S HAPPENING"title="Feed"text="Opportunités, ressources, outils et informations utiles."/><div className="chips">{cats.map(x=><button className={c===x?'selected':''}onClick={()=>setC(x)}key={x}>{x}</button>)}</div><div className="grid2">{data.feed.filter(x=>x.published&&(c==='Tout'||x.category===c)).map(f=><FeedCard f={f}key={f.id}/>)}</div></main>}
+function Posts({data}:{data:AppData}){const[q,setQ]=useState('');return <main className="page"><Hero kicker="DEEP DIVES"title="Posts"text="Publications techniques, méthodes et explications reliées à la knowledge web."/><div className="inlineSearch"><Icon name="search"/><input value={q}onChange={e=>setQ(e.target.value)}placeholder="Filtrer les publications..."/></div><div className="grid2">{data.posts.filter(x=>x.published&&x.title.toLowerCase().includes(q.toLowerCase())).map(p=><PostCard p={p}key={p.id}/>)}</div></main>}
+function Post({data,slug}:{data:AppData;slug:string}){const p=data.posts.find(x=>x.slug===slug);if(!p)return <NotFound/>;return <main className="reader"><button className="back"onClick={()=>go('/posts')}><Icon name="arrow_back"/>Posts</button><article><span className="eyebrow">{p.domain}</span><h1>{p.title}</h1><p className="lead">{p.excerpt}</p><div className="tags">{p.tags.map(t=><span key={t}>#{t}</span>)}</div><MD text={p.body}/><Section title="Continue dans Explore">{data.topics.filter(t=>p.topicIds.includes(t.id)).map(t=><TopicCard t={t}key={t.id}/>)}</Section></article></main>}
+function Library({data}:{data:AppData}){const[d,setD]=useState('Tous'),ds=['Tous',...new Set(data.books.map(x=>x.domain))];return <main className="page"><Hero kicker="DIGITAL BOOKSHELF"title="Library"text="Une bibliothèque numérique. Les connexions pédagogiques apparaissent dans Explore."/><div className="chips">{ds.map(x=><button className={d===x?'selected':''}onClick={()=>setD(x)}key={x}>{x}</button>)}</div><div className="libraryGrid">{data.books.filter(x=>d==='Tous'||x.domain===d).map(b=><button className="bookCard"key={b.id}onClick={()=>go('/library/'+b.id)}><img src={b.cover}alt=""/><span><small>{b.domain}</small><h3>{b.title}</h3><b>{b.author}</b><p>{b.description}</p></span></button>)}</div></main>}
+function Book({data,id}:{data:AppData;id:string}){const b=data.books.find(x=>x.id===id);if(!b)return <NotFound/>;return <main className="page"><button className="back"onClick={()=>go('/library')}><Icon name="arrow_back"/>Library</button><div className="bookHero"><img src={b.cover}alt=""/><div><span className="eyebrow">{b.domain}</span><h1>{b.title}</h1><h2>{b.author}</h2><p>{b.description}</p>{b.url&&<a className="primary"href={b.url}target="_blank"rel="noreferrer">Open resource</a>}</div></div><Section title="Connected knowledge"><div className="topicGrid">{data.topics.filter(t=>b.topicIds.includes(t.id)).map(t=><TopicCard t={t}key={t.id}/>)}</div></Section></main>}
 
-const edges: [string,string][] = [
- ['cs','ai'],['cs','net'],['cs','sec'],['cs','telecom'],['cs','math'],['cs','dev'],['cs','front'],['cs','back'],['cs','db'],['cs','data'],['cs','devops'],
- ['front','react'],['front','ts'],['front','js'],['front','html'],['front','css'],['dev','vite'],['net','tcp'],['sec','pentest'],['data','python'],['back','db'],['devops','back'],['data','ai'],
-];
+function Explore({data}:{data:AppData}){const[mode,setMode]=useState('atlas'),[selected,setSelected]=useState('t-cs'),[q,setQ]=useState(''),[zoom,setZoom]=useState(1);const coords:Record<string,[number,number]>={'t-cs':[50,48],'t-dev':[30,28],'t-web':[18,58],'t-react':[10,80],'t-ts':[27,75],'t-tcp':[67,22],'t-ipv4':[82,38],'t-subnet':[84,62],'t-websec':[68,70],'t-pentest':[50,84]};const edges=[['t-cs','t-dev'],['t-cs','t-tcp'],['t-cs','t-websec'],['t-dev','t-web'],['t-dev','t-react'],['t-react','t-ts'],['t-tcp','t-ipv4'],['t-ipv4','t-subnet'],['t-websec','t-pentest']];const topic=data.topics.find(t=>t.id===selected)||data.topics[0],vis=data.topics.filter(t=>!q||t.title.toLowerCase().includes(q.toLowerCase())||t.domain.toLowerCase().includes(q.toLowerCase()));return <main className="explore"><aside className="exploreSide"><span className="eyebrow">KNOWLEDGE WEB</span><h1>Explore</h1>{[['atlas','hub','Atlas'],['structured','account_tree','Structured View'],['paths','route','Learning Paths']].map(x=><button className={mode===x[0]?'side active':'side'}onClick={()=>setMode(x[0])}key={x[0]}><Icon name={x[1]}/>{x[2]}</button>)}<div className="divider"/><label>Search topics</label><div className="miniSearch"><Icon name="search"/><input value={q}onChange={e=>setQ(e.target.value)}placeholder="Subnetting..."/></div><p>The graph is the relationship layer. Open a topic to reach every connected resource.</p></aside><section className="atlas">{mode==='atlas'?<><span className="status"><i/>Knowledge universe</span><svg viewBox="0 0 1000 800"style={{transform:`scale(${zoom})`}}>{edges.map((e,i)=>{const a=coords[e[0]],b=coords[e[1]];return <line className="edge"key={i}x1={a[0]*10}y1={a[1]*8}x2={b[0]*10}y2={b[1]*8}/>})}{vis.map(t=>{const [x,y]=coords[t.id]||[50,50],sel=t.id===topic.id,r=t.id==='t-cs'?62:40;return <g className="node"key={t.id}transform={`translate(${x*10},${y*8})`}onClick={()=>{setSelected(t.id)}}tabIndex={0}><circle r={r}className={sel?'selected':''}/><circle r={r-8}className="inner"/><foreignObject x="-20"y="-20"width="40"height="40"><div><Icon name={t.domain==='Réseaux'?'lan':t.domain==='Cybersécurité'?'shield':t.domain==='Développement'?'code':'hub'}/></div></foreignObject><text y={r+21}>{t.title}</text></g>})}</svg><div className="zoom"><button onClick={()=>setZoom(z=>Math.min(1.5,z+.1))}>+</button><button onClick={()=>setZoom(z=>Math.max(.7,z-.1))}>−</button><button onClick={()=>setZoom(1)}>1:1</button></div></>:mode==='structured'?<div className="structured"><Hero kicker="KNOWLEDGE STRUCTURE"title="Structured View"text="Une alternative lisible au graphe."/><div className="tree">{data.topics.map(t=><button key={t.id}onClick={()=>go('/explore/topic/'+t.id)}><Icon name="hub"/><span><b>{t.title}</b><small>{t.domain} · {t.estimatedTime} min</small></span><Icon name="chevron_right"/></button>)}</div></div>:<div className="structured"><Hero kicker="GUIDED LEARNING"title="Learning Paths"text="Des séquences quand tu veux apprendre dans l’ordre."/><div className="path"><Icon name="route"/><div><span className="eyebrow">NETWORK FUNDAMENTALS</span><h2>TCP/IP → IPv4 → Subnetting</h2><p>Comprendre, calculer, puis pratiquer.</p><button className="primary"onClick={()=>go('/explore/topic/t-subnet')}>Start path</button></div></div></div>}</section><aside className="exploreDetail"><button className="close"onClick={()=>go('/explore')}><Icon name="close"/></button><div className="detailIcon"><Icon name="hub"/></div><span className="badge">{topic.domain}</span><h2>{topic.title}</h2><p>{topic.description}</p><div className="meta"><span>Difficulty<b>{topic.difficulty}</b></span><span>Time<b>{topic.estimatedTime} min</b></span></div><button className="primary full"onClick={()=>go('/explore/topic/'+topic.id)}>Open topic <Icon name="arrow_forward"/></button><h3>Connected content</h3>{[['article','Posts',topic.postIds.length],['menu_book','Books',topic.bookIds.length],['public','Resources',topic.resourceIds.length],['build','Tools',data.tools.filter(x=>x.topicIds.includes(topic.id)).length],['quiz','Exercises',data.exercises.filter(x=>x.topicIds.includes(topic.id)).length],['science','Labs',data.labs.filter(x=>x.topicIds.includes(topic.id)).length]].map(x=><div className="summary"key={x[1]}><span><Icon name={x[0]}/>{x[1]}</span><b>{x[2]}</b></div>)}</aside></main>}
 
-function Icon({name}:{name:string}) {
-  return <span className="material-symbols-rounded icon">{name}</span>;
-}
+function Topic({data,id}:{data:AppData;id:string}){const t=data.topics.find(x=>x.id===id);if(!t)return <NotFound/>;const blocks:[string,string,any[]][]=[['Posts','article',data.posts.filter(x=>t.postIds.includes(x.id))],['Books','menu_book',data.books.filter(x=>t.bookIds.includes(x.id))],['Resources','public',data.resources.filter(x=>t.resourceIds.includes(x.id))],['Tools','build',data.tools.filter(x=>x.topicIds.includes(t.id))],['Guides','school',data.guides.filter(x=>x.topicIds.includes(t.id))],['Exercises','quiz',data.exercises.filter(x=>x.topicIds.includes(t.id))],['Challenges','flag',data.challenges.filter(x=>x.topicIds.includes(t.id))],['Labs','science',data.labs.filter(x=>x.topicIds.includes(t.id))]];return <main className="page"><button className="back"onClick={()=>go('/explore')}><Icon name="arrow_back"/>Explore</button><header className="topicHeader"><div><span className="eyebrow">{t.domain}</span><h1>{t.title}</h1><p>{t.description}</p><div className="chips"><span>{t.difficulty}</span><span>{t.estimatedTime} min</span></div></div><div className="topicStat"><Icon name="hub"/><b>Connected</b></div></header><div className="contentGrid">{blocks.map(([title,ic,items])=><section className="contentBlock"key={title}><h2><Icon name={ic}/>{title}</h2>{items.length?items.map((x:any)=><button className="contentRow"key={x.id}onClick={()=>x.slug?go('/posts/'+x.slug):x.cover?go('/library/'+x.id):x.url?window.open(x.url,'_blank','noopener,noreferrer'):void 0}><span><b>{x.title}</b><small>{x.author||x.provider||x.description||x.type||x.category}</small></span><Icon name={x.url?'open_in_new':'arrow_forward'}/></button>):<div className="empty">Nothing connected yet.</div>}</section>)}</div><Section title="Related concepts"><div className="topicGrid">{data.topics.filter(x=>t.relatedIds.includes(x.id)).map(x=><TopicCard t={x}key={x.id}/>)}</div></Section></main>}
 
-function App(){
-  const [selectedId,setSelectedId]=useState('cs');
-  const [search,setSearch]=useState('');
-  const [mobilePanel,setMobilePanel]=useState(false);
-  const [view,setView]=useState<'atlas'|'structured'|'paths'>('atlas');
-  const [zoom,setZoom]=useState(1);
-  const selected=nodes.find(n=>n.id===selectedId) ?? nodes[0];
+type K=keyof AppData;const names:Record<K,string>={posts:'Posts',feed:'Feed',books:'Library',resources:'Resources',topics:'Explore topics',tools:'Tools',guides:'Guides',exercises:'Exercises',challenges:'Challenges',labs:'Labs'};
+const blank=(k:K):any=>({id:'',title:'',slug:'',excerpt:'',body:'',description:'',domain:'Développement',difficulty:'beginner',readingTime:5,tags:[],topicIds:[],published:false,createdAt:new Date().toISOString().slice(0,10),author:'',cover:'',url:'',category:'Ressource',provider:'',type:'article',free:true,estimatedTime:30,prerequisites:[],postIds:[],feedItemIds:[],bookIds:[],resourceIds:[],relatedIds:[],pricing:'Gratuit',steps:[]});
+function Admin({data,setData}:{data:AppData;setData:React.Dispatch<React.SetStateAction<AppData>>}){const path=usePath(),[ok,setOk]=useState(localStorage.getItem(ADMIN)==='1');if(!ok)return <main className="login"><div><span className="brandMark"><Icon name="lock"/></span><span className="eyebrow">LOCAL ADMIN</span><h1>Content workspace</h1><p>Frontend-only demo. Data is stored in this browser.</p><button className="primary full"onClick={()=>{localStorage.setItem(ADMIN,'1');setOk(true)}}>Enter workspace</button></div></main>;const s=(path.split('/')[2]||'dashboard')as K|'dashboard'|'analytics'|'settings';if(s==='dashboard')return <AdminLayout title="Dashboard">{<Dashboard data={data}/>}</AdminLayout>;if(s==='analytics')return <AdminLayout title="Analytics"><div className="adminCard"><h2>Local content analytics</h2><div className="stats">{Object.entries(names).map(([k,l])=><div className="stat"key={k}><small>{l}</small><b>{(data as any)[k].length}</b></div>)}</div></div></AdminLayout>;if(s==='settings')return <AdminLayout title="Settings"><div className="adminCard"><h2>Configuration</h2><p>LocalStorage is active. Production authentication, server-side authorization, uploads and analytics should be added with a backend.</p></div></AdminLayout>;return <Manager section={s}data={data}setData={setData}/>}
 
-  const visible=useMemo(()=>{
-    const q=search.trim().toLowerCase();
-    return q ? nodes.filter(n=>n.title.toLowerCase().includes(q)||n.tags.some(t=>t.toLowerCase().includes(q))) : nodes;
-  },[search]);
+function AdminLayout({title,children}:{title:string;children:React.ReactNode}){const p=location.pathname;return <main className="admin"><aside><button className="brand"onClick={()=>go('/')}><span className="brandMark"><Icon name="school"/></span>Personal <b>CS</b></button>{[['dashboard','dashboard','Dashboard'],...Object.entries(names).map(([k,v])=>[k,k==='topics'?'hub':'article',v]),['analytics','analytics','Analytics'],['settings','settings','Settings']].map(x=><button className={p==='/admin/'+x[0]?'active':''}key={x[0]}onClick={()=>go('/admin/'+x[0])}><Icon name={x[1]}/>{x[2]}</button>)}<button className="logout"onClick={()=>{localStorage.removeItem(ADMIN);go('/')}}><Icon name="logout"/>Exit</button></aside><section className="adminMain"><header><div><span className="eyebrow">ADMIN WORKSPACE</span><h1>{title}</h1></div><button className="secondary"onClick={()=>go('/')}>View site</button></header>{children}</section></main>}
+function Dashboard({data}:{data:AppData}){return <><div className="stats">{Object.entries(names).map(([k,l])=><div className="stat"key={k}><small>{l}</small><b>{(data as any)[k].length}</b></div>)}</div><div className="adminCard"><h2>Quick actions</h2><div className="quick">{[['posts','New post'],['feed','New feed item'],['books','Add book'],['topics','New topic'],['resources','Add resource']].map(x=><button key={x[0]}onClick={()=>go('/admin/'+x[0])}><Icon name="add"/>{x[1]}<Icon name="arrow_forward"/></button>)}</div></div></>}
+function Manager({section,data,setData}:{section:K;data:AppData;setData:React.Dispatch<React.SetStateAction<AppData>>}){const[edit,setEdit]=useState<any|null>(null),items=(data as any)[section]as any[];const save=(v:any)=>{const x={...v,id:v.id||uid(String(section))};setData(d=>({...d,[section]:(d[section]as any[]).some(a=>a.id===x.id)?(d[section]as any[]).map(a=>a.id===x.id?x:a):[...(d[section]as any[]),x]}));setEdit(null)};const del=(id:string)=>{if(confirm('Delete this item?'))setData(d=>({...d,[section]:(d[section]as any[]).filter(a=>a.id!==id)}))};return <AdminLayout title={names[section]}><div className="managerBar"><span>{items.length} items · local store</span><button className="primary"onClick={()=>setEdit(blank(section))}><Icon name="add"/>New</button></div><div className="adminCard">{items.map(x=><div className="adminRow"key={x.id}><span><b>{x.title}</b><small>{x.domain||x.category||x.provider||x.type||'Content'} · {x.published===false?'Draft':'Published'}</small></span><button onClick={()=>setEdit(x)}><Icon name="edit"/></button><button onClick={()=>del(x.id)}><Icon name="delete"/></button></div>)}</div>{edit&&<Editor section={section}value={edit}save={save}close={()=>setEdit(null)}/>}</AdminLayout>}
+function Editor({section,value,save,close}:{section:K;value:any;save:(v:any)=>void;close:()=>void}){const[v,setV]=useState({...value}),fields=section==='posts'?['title','slug','excerpt','body','domain','difficulty','readingTime','tags','topicIds','published']:section==='feed'?['title','excerpt','category','url','tags','topicIds','published','createdAt']:section==='books'?['title','author','description','domain','cover','url','topicIds','published']:section==='resources'?['title','description','type','provider','url','topicIds','free','difficulty']:section==='topics'?['title','description','domain','difficulty','estimatedTime','prerequisites','postIds','feedItemIds','bookIds','resourceIds','relatedIds']:section==='tools'?['title','description','category','url','pricing','topicIds']:section==='guides'?['title','description','body','topicIds']:section==='exercises'?['title','description','type','difficulty','topicIds']:section==='challenges'?['title','description','difficulty','topicIds']:['title','description','difficulty','topicIds','steps'];const set=(k:string,x:any)=>setV(a=>({...a,[k]:x}));return <div className="modal"><div className="editor"><header><h2>{value.id?'Edit':'Create'} {names[section]}</h2><button onClick={close}><Icon name="close"/></button></header><div className="form">{fields.map(k=>{if(k==='published'||k==='free')return <label className="check"key={k}><input type="checkbox"checked={!!v[k]}onChange={e=>set(k,e.target.checked)}/>{k}</label>;if(['body'].includes(k))return <label className="wide"key={k}>{k}<textarea rows={9}value={v[k]||''}onChange={e=>set(k,e.target.value)}/></label>;if(['tags','topicIds','prerequisites','postIds','feedItemIds','bookIds','resourceIds','relatedIds','steps'].includes(k))return <label className="wide"key={k}>{k}<input value={Array.isArray(v[k])?v[k].join(', '):''}onChange={e=>set(k,e.target.value.split(',').map(x=>x.trim()).filter(Boolean))}/></label>;return <label key={k}>{k}<input value={v[k]??''}onChange={e=>set(k,e.target.value)}/></label>})}</div><footer><button className="secondary"onClick={close}>Cancel</button><button className="primary"onClick={()=>save(v)}>Save</button></footer></div></div>}
+function NotFound(){return <main className="page emptyPage"><Icon name="search_off"/><h1>Page not found</h1><button className="primary"onClick={()=>go('/')}>Home</button></main>}
 
-  const visibleIds=new Set(visible.map(n=>n.id));
-  const connected=new Set([selected.id,...edges.filter(e=>e.includes(selected.id)).flat()]);
-
-  const select=(id:string)=>{setSelectedId(id); setMobilePanel(true)};
-
-  return <div className="app">
-    <header className="topbar">
-      <div className="brand"><div className="brandMark"><Icon name="school"/></div><span>Personal <b>CS</b></span></div>
-      <div className="topSearch"><Icon name="search"/><input aria-label="Search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search topics, technologies, resources..."/></div>
-      <nav className="desktopNav"><a>Home</a><a className="active">Explore</a><a>Library</a><a>Admin</a></nav>
-      <button className="iconBtn" aria-label="Toggle theme"><Icon name="light_mode"/></button><div className="avatar">S</div>
-      <button className="mobileMenu" aria-label="Open menu"><Icon name="menu"/></button>
-    </header>
-
-    <div className="layout">
-      <aside className="sidebar">
-        <h1>Explore</h1>
-        <button className={view==='atlas'?'sideItem active':'sideItem'} onClick={()=>setView('atlas')}><Icon name="hub"/>Atlas</button>
-        <button className={view==='structured'?'sideItem active':'sideItem'} onClick={()=>setView('structured')}><Icon name="account_tree"/>Structured View</button>
-        <button className={view==='paths'?'sideItem active':'sideItem'} onClick={()=>setView('paths')}><Icon name="route"/>Learning Paths</button>
-        <div className="divider"/>
-        <h3>Filters</h3>
-        <label>Domain</label>
-        <select aria-label="Domain filter"><option>All Domains</option><option>Informatique</option><option>Réseaux</option><option>Cybersécurité</option></select>
-        <label>Difficulty</label>
-        {['Beginner','Intermediate','Advanced'].map((x,i)=><label className="check" key={x}><input type="checkbox"/><i className={`dot d${i}`}/>{x}</label>)}
-        <label>Content Available</label>
-        {['Posts','Books','Resources','Tools','Guides','Exercises','Challenges','Labs'].map(x=><label className="check" key={x}><input type="checkbox"/>Has {x}</label>)}
-        <button className="reset"><Icon name="restart_alt"/>Reset Filters</button>
-      </aside>
-
-      <main className="canvasArea">
-        <div className="statusPill"><span/> Exploring the knowledge universe...</div>
-
-        {view==='atlas' ? <svg className="graph" viewBox="0 0 1000 760" role="img" aria-label="Interactive computer science knowledge graph" style={{transform:`scale(${zoom})`}}>
-          <defs><filter id="glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-          {edges.map(([a,b],i)=>{
-            const A=nodes.find(n=>n.id===a)!; const B=nodes.find(n=>n.id===b)!;
-            const active=connected.has(a)||connected.has(b);
-            return <line key={i} x1={A.x*10} y1={A.y*7.6} x2={B.x*10} y2={B.y*7.6} className={active?'edge active':'edge'}/>;
-          })}
-          {nodes.map(n=>{
-            if(!visibleIds.has(n.id)) return null;
-            const size=n.kind==='domain'?58:n.kind==='topic'?42:30;
-            const active=connected.has(n.id);
-            return <g key={n.id} transform={`translate(${n.x*10},${n.y*7.6})`} className={`node ${selectedId===n.id?'selected':''} ${active?'connected':''}`} onClick={()=>select(n.id)} tabIndex={0} onKeyDown={e=>e.key==='Enter'&&select(n.id)}>
-              <circle r={size} fill="rgba(8,25,48,.88)" stroke={n.color} strokeWidth={n.kind==='domain'?3:2} filter={selectedId===n.id?'url(#glow)':undefined}/>
-              <circle r={size-7} fill={n.color} opacity=".09"/>
-              <foreignObject x={-22} y={-24} width="44" height="44"><div className="nodeIcon" style={{color:n.color}}>{n.icon.length<=4?<span className="textLogo">{n.icon}</span>:<Icon name={n.icon}/>}</div></foreignObject>
-              <text y={size+20} textAnchor="middle" className="nodeLabel">{n.title}</text>
-            </g>
-          })}
-        </svg> : <div className="structured">
-          <div className="structuredHead">
-            <div><p className="eyebrow">KNOWLEDGE STRUCTURE</p><h2>{view==='paths'?'Learning Paths':'Structured View'}</h2><p>Navigate the same connected knowledge without relying on the graph.</p></div>
-            <button className="primary"><Icon name="play_arrow"/> Explore</button>
-          </div>
-          <div className="tree">
-            {['Informatique','Réseaux','Cybersécurité','Intelligence Artificielle','Télécommunications','Mathématiques','Sciences des Données'].map((d,i)=><div className="treeRow" key={d}>
-              <div className="treeCircle" style={{borderColor:nodes[i+1]?.color}}><Icon name={nodes[i+1]?.icon||'category'}/></div>
-              <div><b>{d}</b><span>{i%2?'12 topics · 8 resources':'18 topics · 14 resources'}</span></div>
-              <Icon name="chevron_right"/>
-            </div>)}
-          </div>
-        </div>}
-
-        <div className="graphControls"><button onClick={()=>setZoom(z=>Math.min(1.5,z+.1))} aria-label="Zoom in">+</button><button onClick={()=>setZoom(z=>Math.max(.7,z-.1))} aria-label="Zoom out">−</button></div>
-        <button className="floating" aria-label="Graph filters"><Icon name="tune"/></button>
-      </main>
-
-      <aside className={`details ${mobilePanel?'mobileOpen':''}`}>
-        <button className="closePanel" onClick={()=>setMobilePanel(false)} aria-label="Close details"><Icon name="close"/></button>
-        <div className="detailIcon" style={{borderColor:selected.color,color:selected.color}}><Icon name={selected.icon.length<=4?'code':selected.icon}/></div>
-        <h2>{selected.title}</h2>
-        <span className="badge">{selected.kind==='domain'?'Domaine':selected.kind==='topic'?'Composant':'Technologie'}</span>
-        <p>{selected.description}</p>
-        <div className="meta">
-          <div><Icon name="bar_chart"/><span>Niveau<strong>{selected.kind==='technology'?'Intermédiaire':'Tous niveaux'}</strong></span></div>
-          <div><Icon name="schedule"/><span>Temps estimé<strong>{selected.kind==='technology'?'30 min':'Variable'}</strong></span></div>
-        </div>
-        <button className="primary full" onClick={()=>setView('structured')}><Icon name="menu_book"/>Voir le domaine <Icon name="arrow_forward"/></button>
-        <section><h3>Composants principaux</h3>
-          {nodes.filter(n=>n.parent===selected.id || (selected.id==='cs'&&n.kind==='topic')).slice(0,7).map(n=><button className="resourceRow" key={n.id} onClick={()=>select(n.id)}><span style={{color:n.color}}><Icon name={n.icon.length<=4?'code':n.icon}/></span>{n.title}<Icon name="chevron_right"/></button>)}
-        </section>
-        <section><h3>Ressources associées</h3>
-          {[['description','Posts','24'],['book','Livres','12'],['link','Ressources','36'],['build','Outils','18'],['menu_book','Guides','9'],['code','Exercices','14'],['emoji_events','Challenges','6'],['science','Labs','8']].map(([i,n,c])=><div className="resourceRow" key={n}><span><Icon name={i}/></span>{n}<em>{c}</em><Icon name="chevron_right"/></div>)}
-        </section>
-      </aside>
-    </div>
-
-    <nav className="bottomNav"><a><Icon name="home"/>Home</a><a className="active"><Icon name="explore"/>Explore</a><a><Icon name="menu_book"/>Library</a><a><Icon name="shield"/>Admin</a></nav>
-  </div>
-}
-
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+function App(){const[data,setData]=useData(),path=usePath();let c:React.ReactNode;if(path==='/')c=<Home data={data}/>;else if(path==='/feed')c=<Feed data={data}/>;else if(path==='/posts')c=<Posts data={data}/>;else if(path.startsWith('/posts/'))c=<Post data={data}slug={path.split('/')[2]}/>;else if(path==='/library')c=<Library data={data}/>;else if(path.startsWith('/library/'))c=<Book data={data}id={path.split('/')[2]}/>;else if(path==='/explore')c=<Explore data={data}/>;else if(path.startsWith('/explore/topic/'))c=<Topic data={data}id={path.split('/')[3]}/>;else if(path.startsWith('/admin'))c=<Admin data={data}setData={setData}/>;else c=<NotFound/>;return path.startsWith('/admin')?c:<Shell data={data}>{c}</Shell>}
+createRoot(document.getElementById('root')!).render(<App/>);
